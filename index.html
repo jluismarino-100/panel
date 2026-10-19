@@ -280,10 +280,20 @@ async function cargar() {
   const cont = $('#contenido');
   cont.innerHTML = '<div class="card pad">Cargando datos…</div>';
 
-  const [sync] = await tabla('ml_sync');
-  const ventas = await tabla('ml_sales', { orden: 'sold_at.desc' });
-  const publicaciones = await tabla('ml_listings');
-  const ads = await tabla('ml_ads_daily', { orden: 'day.asc' });
+  // Las cuatro tablas se piden AL MISMO TIEMPO, no una después de la otra, y
+  // de cada una sólo las columnas que la página usa de verdad. Así no se baja
+  // (por ejemplo) el detalle de competencia de 747 publicaciones para nada.
+  const t0 = performance.now();
+  const [[sync], ventas, publicaciones, ads] = await Promise.all([
+    tabla('ml_sync'),
+    tabla('ml_sales', {
+      select: 'sold_at,item_id,title,sku,quantity,gross_revenue,commission,shipping,net_received,advertising',
+      orden: 'sold_at.desc',
+    }),
+    tabla('ml_listings', { select: 'item_id,title,sku,permalink,price,stock,status' }),
+    tabla('ml_ads_daily', { select: 'day,cost', orden: 'day.asc' }),
+  ]);
+  const segundos = ((performance.now() - t0) / 1000).toFixed(1);
 
   const t = sync?.totals || {};
   $('#cuando').textContent = sync
@@ -380,6 +390,7 @@ async function cargar() {
     <div class="aviso" style="margin:26px 0 40px">
       Esta página <b>solo lee</b>. Desde acá no se puede cambiar nada, ni en el panel ni en Mercado Libre.
       Los datos se actualizan cuando se suben desde la computadora de la fábrica.
+      <span style="opacity:.7">· ${numero(ventas.length)} ventas y ${numero(publicaciones.length)} publicaciones cargadas en ${segundos}s</span>
     </div>`;
 
   barras($('#g-fact'), { datos: dias, valor: (d) => d.total, etiqueta: (d) => fechaCorta(d.day), titulo: 'Facturación por día' });
